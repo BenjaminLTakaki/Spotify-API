@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Music Cover Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Spotify Music Cover Generator</h1>
+        <p>Create AI-generated album art based on your playlist or album's genres</p>
+        
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+        
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="playlist_url">Spotify Playlist or Album URL:</label>
+                <input type="text" id="playlist_url" name="playlist_url" placeholder="https://open.spotify.com/playlist/... or https://open.spotify.com/album/..." required>
+                <small>Paste the full URL of a Spotify playlist or album</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="mood">Optional Mood Override:</label>
+                <input type="text" id="mood" name="mood" placeholder="e.g., energetic, dreamy, nostalgic">
+                <small>Leave empty to detect mood automatically from the music genres</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="lora_name">LoRA Style (Optional):</label>
+                <select id="lora_name" name="lora_name">
+                    <option value="none">None (Default Stable Diffusion)</option>
+                    {% for lora in loras %}
+                    <option value="{{ lora.name }}">{{ lora.name }} ({{ lora.source_type }})</option>
+                    {% endfor %}
+                </select>
+                <small>Apply a custom LoRA for specialized art styles</small>
+            </div>
+            
+            <div class="form-group" id="lora-url-group">
+                <label for="lora_url">LoRA URL (Optional):</label>
+                <input type="text" id="lora_url" name="lora_url" placeholder="https://civitai.com/models/... or direct file URL">
+                <small>Alternatively, directly enter a URL to a LoRA file or Civitai model</small>
+            </div>
+            
+            <div class="lora-preview">
+                <p>Selected LoRA Preview:</p>
+                <div id="lora-preview-container">
+                    <p class="no-lora">No LoRA selected</p>
+                </div>
+            </div>
+            
+            <div class="form-group preset-options">
+                <label>Preset styles:</label>
+                <div class="preset-buttons">
+                    <button type="button" class="preset-btn" data-preset="minimalist">Minimalist</button>
+                    <button type="button" class="preset-btn" data-preset="high-contrast">High Contrast</button>
+                    <button type="button" class="preset-btn" data-preset="retro">Retro</button>
+                    <button type="button" class="preset-btn" data-preset="bold-colors">Bold Colors</button>
+                </div>
+            </div>
+            
+            <button type="submit" class="submit-btn">Generate Cover</button>
+        </form>
+        
+        <div class="lora-upload">
+            <h3>Add LoRA</h3>
+            
+            <div class="lora-tabs">
+                <button class="lora-tab-btn active" data-tab="upload">Upload File</button>
+                <button class="lora-tab-btn" data-tab="link">Add Via Link</button>
+            </div>
+            
+            <div id="lora-upload-tab" class="lora-tab-content active">
+                <form id="lora-upload-form" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="lora_file">LoRA File (.safetensors, .ckpt, .pt):</label>
+                        <input type="file" id="lora_file" name="file" accept=".safetensors,.ckpt,.pt">
+                    </div>
+                    <button type="submit" class="upload-btn">Upload LoRA</button>
+                </form>
+            </div>
+            
+            <div id="lora-link-tab" class="lora-tab-content">
+                <form id="lora-link-form">
+                    <div class="form-group">
+                        <label for="link_name">LoRA Name (Optional):</label>
+                        <input type="text" id="link_name" name="name" placeholder="Custom name for this LoRA">
+                        <small>Leave empty to extract name from URL</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="link_url">LoRA URL (Required):</label>
+                        <input type="text" id="link_url" name="url" placeholder="https://civitai.com/models/... or direct file URL" required>
+                        <small>Civitai model page or direct link to .safetensors file</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="link_strength">LoRA Strength:</label>
+                        <input type="range" id="link_strength" name="strength" min="0.1" max="1.0" step="0.1" value="0.7">
+                        <output for="link_strength" id="strength-output">0.7</output>
+                    </div>
+                    <button type="submit" class="upload-btn">Add LoRA Link</button>
+                </form>
+            </div>
+            
+            <div id="upload-status"></div>
+        </div>
+        
+        <div class="info-section">
+            <h3>How it works</h3>
+            <p>This tool analyzes your Spotify playlist or album to extract genres from the artists. It then uses AI to generate a unique album cover that matches your music's genres and style, with a detailed genre analysis chart.</p>
+            
+            <h4>New Features</h4>
+            <ul>
+                <li><strong>Gemini AI Titles</strong> - Using Google's Gemini 2.5 Flash Preview API for creative album titles</li>
+                <li><strong>LoRA Support</strong> - Add LoRAs via file upload or direct URL links (including Civitai models)</li>
+                <li><strong>Stable Diffusion API</strong> - Faster image generation using cloud-based Stable Diffusion</li>
+            </ul>
+            
+            <h4>Using LoRAs</h4>
+            <p>LoRAs (Low-Rank Adaptations) are specialized models that can dramatically change the visual style of generated images. You can:</p>
+            <ul>
+                <li><strong>Upload LoRA files</strong> directly (.safetensors, .ckpt, .pt)</li>
+                <li><strong>Add LoRAs via URL</strong> from Civitai and other sources</li>
+                <li><strong>Use direct LoRA file URLs</strong> for one-time generation without saving</li>
+            </ul>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
