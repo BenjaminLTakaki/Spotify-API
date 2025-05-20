@@ -28,8 +28,10 @@ SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8888/
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent"
 
-# Stability AI API (using the existing STABILITY_API_KEY from .env)
+# Stability AI API 
 STABILITY_API_KEY = os.getenv("STABILITY_API_KEY")
+# Stable Diffusion 3.5 Large engine ID
+SD_3_5_LARGE_ENGINE = "sd3.5-large"
 
 # Civitai API - for fetching LoRA details
 CIVITAI_API_ENABLED = os.getenv("CIVITAI_API_ENABLED", "True").lower() in ("true", "1", "yes")

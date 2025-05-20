@@ -5,6 +5,7 @@ import json
 import datetime
 from flask import Flask, request, render_template, send_from_directory, jsonify, session
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Import app modules
 from spotify_client import initialize_spotify

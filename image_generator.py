@@ -5,64 +5,8 @@ import base64
 from PIL import Image
 import io
 import time
+import random
 from config import STABILITY_API_KEY, DEFAULT_NEGATIVE_PROMPT, COVERS_DIR
-
-# Cache for engine ID to avoid repeated API calls
-_ENGINE_ID_CACHE = None
-
-def get_engine_id():
-    """Get the most appropriate engine ID for text-to-image generation"""
-    global _ENGINE_ID_CACHE
-    
-    # Return cached engine ID if available
-    if _ENGINE_ID_CACHE:
-        return _ENGINE_ID_CACHE
-    
-    # Check if we have API key
-    if not STABILITY_API_KEY:
-        print("ERROR: Missing Stability API key. Please set STABILITY_API_KEY in your .env file.")
-        return None
-    
-    # Get available engines
-    engines_url = "https://api.stability.ai/v1/engines/list"
-    
-    headers = {
-        "Authorization": f"Bearer {STABILITY_API_KEY}",
-        "Accept": "application/json"
-    }
-    
-    try:
-        response = requests.get(engines_url, headers=headers)
-        
-        if response.status_code != 200:
-            print(f"Error getting engines: {response.status_code}")
-            print(f"Details: {response.text}")
-            # Fall back to default engine ID
-            _ENGINE_ID_CACHE = "stable-diffusion-xl-1024-v1-0"
-            return _ENGINE_ID_CACHE
-        
-        engines_data = response.json()
-        
-        # Filter for Stable Diffusion engines
-        sd_engines = [engine for engine in engines_data if "stable-diffusion" in engine['id'].lower()]
-        if not sd_engines:
-            print("No Stable Diffusion engines found. Using default.")
-            _ENGINE_ID_CACHE = "stable-diffusion-xl-1024-v1-0"
-            return _ENGINE_ID_CACHE
-        
-        # Prefer SDXL if available
-        sdxl_engines = [engine for engine in sd_engines if "xl" in engine['id'].lower()]
-        selected_engine = sdxl_engines[0]['id'] if sdxl_engines else sd_engines[0]['id']
-        
-        print(f"Using Stability AI engine: {selected_engine}")
-        _ENGINE_ID_CACHE = selected_engine
-        return _ENGINE_ID_CACHE
-        
-    except Exception as e:
-        print(f"Error fetching engine list: {e}")
-        # Fall back to default engine ID
-        _ENGINE_ID_CACHE = "stable-diffusion-xl-1024-v1-0"
-        return _ENGINE_ID_CACHE
 
 def create_prompt_from_data(playlist_data, user_mood=None):
     """Create optimized prompt for stable diffusion"""
@@ -85,42 +29,43 @@ def create_prompt_from_data(playlist_data, user_mood=None):
     
     return prompt
 
+def send_generation_request(url, params):
+    """Send request to Stability API using multipart/form-data"""
+    if not STABILITY_API_KEY:
+        print("ERROR: Missing Stability API key. Please set STABILITY_API_KEY in your .env file.")
+        return None
+        
+    headers = {
+        "Authorization": f"Bearer {STABILITY_API_KEY}",
+        "Accept": "application/json"
+    }
+    
+    # Convert params to multipart/form-data format
+    files = {}
+    for key, value in params.items():
+        if isinstance(value, (int, float)):
+            value = str(value)
+        files[key] = (None, value)
+    
+    response = requests.post(url, files=files, headers=headers)
+    
+    if response.status_code != 200:
+        print(f"Error: API returned status code {response.status_code}")
+        print(f"Response: {response.text}")
+        return None
+    
+    return response.json()
+
 def generate_cover_image(prompt, lora=None, output_path=None, negative_prompt=DEFAULT_NEGATIVE_PROMPT):
-    """Generate album cover image using Stability AI API"""
-    # Get the appropriate engine ID
-    engine_id = get_engine_id()
-    if not engine_id:
-        print("ERROR: Could not determine Stability AI engine ID.")
+    """Generate album cover image using Stability AI SD 3.5 Large API"""
+    # Check if we have API key
+    if not STABILITY_API_KEY:
+        print("ERROR: Missing Stability API key. Please set STABILITY_API_KEY in your .env file.")
         return False
     
     print(f"Generating with prompt: {prompt}")
     
-    # Configure API URL and headers
-    url = f"https://api.stability.ai/v1/generation/{engine_id}/text-to-image"
-    
-    headers = {
-        "Authorization": f"Bearer {STABILITY_API_KEY}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    
-    # Prepare text prompts
-    text_prompts = [
-        {
-            "text": prompt,
-            "weight": 1.0
-        }
-    ]
-    
-    # Add negative prompt if provided
-    if negative_prompt:
-        text_prompts.append({
-            "text": negative_prompt,
-            "weight": -1.0
-        })
-    
-    # LoRA support is limited in the Stability API
-    # If LoRA is provided, we can add it as additional prompt context
+    # Check if we have a LoRA model
     if lora:
         lora_prompt = ""
         if isinstance(lora, dict):
@@ -138,40 +83,36 @@ def generate_cover_image(prompt, lora=None, output_path=None, negative_prompt=DE
             # If it's just a string, use it as a style reference
             lora_prompt = f"in the style of {lora}"
         
-        # Add LoRA context to the prompt if we have it
         if lora_prompt:
-            # Add to existing prompt
-            enhanced_prompt = f"{prompt}, {lora_prompt}"
-            # Update the prompt in the payload
-            text_prompts[0]["text"] = enhanced_prompt
-            print(f"Enhanced prompt with LoRA context: {enhanced_prompt}")
+            prompt = f"{prompt}, {lora_prompt}"
+            print(f"Enhanced prompt with LoRA context: {prompt}")
     
-    # Prepare the JSON payload
-    payload = {
-        "text_prompts": text_prompts,
-        "cfg_scale": 7.0,
-        "height": 1024,
-        "width": 1024,
-        "samples": 1,
-        "steps": 30
+    url = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
+    
+    seed = random.randint(1, 1000000)
+    
+    # Prepare parameters for the API
+    params = {
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "aspect_ratio": "1:1",  # Square aspect ratio for album covers
+        "seed": seed,
+        "output_format": "png",
+        "model": "sd3.5-large",  # Using the flagship model
+        "mode": "text-to-image"
     }
     
     try:
-        # Make the API request
-        response = requests.post(url, headers=headers, json=payload)
+        # Send the request
+        response_data = send_generation_request(url, params)
         
-        # Check response
-        if response.status_code != 200:
-            print(f"Error: API returned status code {response.status_code}")
-            print(f"Response: {response.text}")
+        # Check if we got a valid response
+        if not response_data:
             return False
-        
-        # Parse the response
-        response_data = response.json()
-        
-        # Extract the image data
-        if "artifacts" in response_data and len(response_data["artifacts"]) > 0:
-            image_base64 = response_data["artifacts"][0]["base64"]
+            
+        # Extract image data
+        if "image" in response_data:
+            image_base64 = response_data["image"]
             image_bytes = base64.b64decode(image_base64)
             
             # Create image from bytes
